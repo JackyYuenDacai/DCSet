@@ -1,0 +1,32 @@
+#include"DCInfoT.h"
+#include<stdio.h>
+
+#define ERROR(n)  	if(serv.IsError==true){\
+ 				printf("Error:%d MSG:%s ERRNO:%d!\n",n,serv.ErrorInfo.ErrorStr.ArrayShowc(),serv.ErrorInfo.ErrorNo);\
+ 				return 0;\
+ 			}else\
+ 			{\
+ 				printf("Success:%d!\n",n);\
+ 			}
+ 			
+int main(){ 
+ DCInfo serv;
+ printf("Size:%d\n",sizeof(serv));
+ serv.SetIsServer(true);
+ serv.SetPort(1450);
+ serv.ServerInit();
+ serv.ServerBind();
+ serv.ServerListen();
+ serv.ServerAccept();
+ serv.ServerAccept();
+ ERROR(0)
+ serv.Send("Hello World",12);
+ ERROR(1)
+ serv.Send("Hello C2",9,1);
+ ERROR(2)
+ serv.Recv(50); 
+ printf("\nRecv:%d %s",serv.LRecvCount,serv.RecvBuf.ArrayShowc());
+
+ putchar('\n');
+ return 0;
+}

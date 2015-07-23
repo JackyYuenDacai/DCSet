@@ -1,0 +1,12 @@
+#include"Integer.h"
+#include<stdio.h>
+int main()
+{
+	Integer test;
+	test=2349782345;
+	test+=2454236356;
+	printf("%s",test.ToCharStr());
+	printf("\n");	
+	
+	return 0;
+}

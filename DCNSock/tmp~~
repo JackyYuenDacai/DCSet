@@ -1,0 +1,187 @@
+template <class ANType>
+class DCDNode{
+  	struct NodeLink
+  	{
+	  	void* data;
+		NodeLink*next,*unext;
+	};
+	NodeLink*head,*nail;
+	NodeLink*pointer;
+	struct TurnLog
+	{
+		void*Addr;
+		TurnLog*next;
+	};
+	TurnLog*LogHead,*LogNow;
+	long long pointNum;
+	long long NodeCount;
+	size_t IndivSize;
+public:
+	void Alloc(){
+		head=(NodeLink*)malloc(sizeof(NodeLink));
+		nail=head;
+		IndivSize=sizeof(ANType);
+		head->data=malloc(IndivSize);
+		head->unext=NULL;
+		NodeCount=0;
+		pointer=nail;
+		pointNum=-1;
+		LogHead=(TurnLog*)malloc(sizeof(TurnLog));
+		LogNow=LogHead;LogNow->Addr=0;
+	}
+	DCDNode(long long len){
+		Alloc();
+		AddNode(len);
+	}
+	DCDNode(){
+		Alloc();
+	}
+	void AddNode(long long NCount){
+		for(;NCount>0;NCount--){
+			NodeCount++;
+			nail->next=(NodeLink*)malloc(sizeof(NodeLink));
+			nail->next->data=(void*)malloc(IndivSize);
+                        (nail->next)->unext=nail;
+                        nail=nail->next;
+		}
+	}
+	void AddArrayLog(void*Addr){
+		LogNow->Addr=Addr;
+		LogNow->next=(TurnLog*)malloc(sizeof(TurnLog));
+		LogNow=LogNow->next;LogNow->Addr=0;
+	}
+	void ClearArrayLog(){
+		TurnLog*Enum;
+		LogNow=LogHead;
+		if(LogHead->Addr==0)
+			return;
+		free(LogHead->Addr),LogNow=LogHead->next;
+		while(LogNow->Addr!=0)
+		{
+			free(LogNow->Addr);
+                        Enum=LogNow;
+			LogNow=LogNow->next;
+                        free(Enum);
+		}
+		free(LogNow);
+		LogNow=LogHead,LogNow->Addr=0;
+	}
+	NodeLink* NodeSet(long long index){
+	
+		if(index<0)return NULL;
+		if((index+1)>NodeCount)
+       		return (AddNode((index+1)-NodeCount),nail);
+       		if(abs(NodeCount/2-index)<abs(index-pointNum)){
+       			NodeLink*retNode;
+       			switch(int(index>=(NodeCount/2)))
+			{
+			case 0:
+				retNode=head->next;
+				for(long long i=0;i<index;i++)
+				retNode=retNode->next;
+				pointNum=index;
+				pointer=retNode;
+				return retNode;
+		 	case 1:
+				retNode=nail;
+				for(long long i=0;i<(NodeCount-index-1);i++)
+					retNode=retNode->unext;
+				pointNum=index;
+				pointer=retNode;
+				return retNode;
+			}
+       		}
+       		else{
+       			switch(int(index>=pointNum)){
+       			case 0:
+       				for(long long i=0;i<=pointNum-index;i++)
+       				pointer=pointer->unext,pointNum--;
+       				return pointer;
+       			case 1:
+       				for(long long i=0;i<=index-pointNum;i++)
+       				pointer=pointer->next,pointNum++;
+       				return pointer;
+       			}
+       			
+       		}
+       		return NULL;
+	}
+	void DelNode(long long index){
+		if(index>=NodeCount||index<0)
+		return;
+		if(index==NodeCount-1)
+		{
+			nail=(nail->unext);free(nail->next);
+			nail->next=NULL;NodeCount--;
+			return;
+		}
+		NodeLink*DelN=NodeSet(index);
+		DelN->unext->next=DelN->next;
+		DelN->next->unext=DelN->unext;
+		free(DelN->data);
+		free(DelN);
+		NodeCount--;
+	}
+	void DelAll(){
+		for(long long i=0;i<NodeCount;i++)
+			nail=nail->unext,
+			free(nail->next->data),
+			free(nail->next);
+		NodeCount=0;
+		head=nail;head->next=nail;nail->unext=head;
+	}
+	ANType*ToAnyType(){
+		NodeLink*save=head->next;
+        	ANType*retArray=(ANType*)malloc(size_t(IndivSize*(NodeCount)));
+       		for(long long i=0;i<NodeCount;i++)
+			retArray[i]=*(ANType*)(save->data),
+			save=save->next;
+		AddArrayLog(retArray);
+		return retArray;
+	}
+	operator ANType*(){
+		return ToAnyType();
+	}
+	operator const ANType*(){
+		return (const ANType*)ToAnyType();
+	}
+	long long GetLength(){
+		return NodeCount;
+	}
+	void AddArray(ANType*Array,int length){
+		NodeLink*save=nail;
+		AddNode(length);save=save->next;
+		for(long long i=0;i<length;i++)
+		{
+			save->data=Array[i];
+			save=save->next;
+		}
+	}
+	ANType& operator [](long long index){
+		return *(ANType*)(NodeSet(index)->data);
+	}
+	ANType& operator [](long index){
+		return *(ANType*)(NodeSet(index)->data);
+	}	
+	ANType& operator [](int index){
+		return *(ANType*)(NodeSet(index)->data);
+	}
+	ANType& operator [](short index){
+		return *(ANType*)(NodeSet(index)->data);
+	}
+	void operator +=(ANType Lett){
+		*((ANType*)(NodeSet(NodeCount+1)->data))=Lett;
+	}
+	void operator=(DCDNode&dcnode){
+		DelAll();
+		AddArray(dcnode.ToAnyType(),dcnode.GetLength());
+	}
+	
+	~DCDNStr(){
+		DelAll();
+		ClearArrayLog();
+		free(LogHead);
+		free(head);
+	}
+};
+};

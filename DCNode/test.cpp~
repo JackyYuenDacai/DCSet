@@ -1,0 +1,21 @@
+#include<DCSet/DCNNode.h>
+#include<stdio.h>
+#include<unistd.h>  
+#include<sys/time.h>
+int gettimeofday(struct timeval *tv, struct timezone *tz);
+int main(){
+	DCNode<int> a,b;
+	a[0]=3356;
+	a[1]=5568;
+	a[2]=7895;
+	a[7]=2351;
+	a.Insert(0,2);
+	a.Insert(1);
+	a[1]=2131;
+	a[0]=2222;
+	for(int i=0;i<a.GetLength();i++){
+		printf("%d ",a[i]);
+	}
+	putchar('\n');
+	return 0;
+}

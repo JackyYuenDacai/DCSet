@@ -1,0 +1,16 @@
+#include<stdio.h>
+
+#include"DCAtom.h"
+
+int main()
+{
+	DCAtomCollection test;
+	DCDNode<int> tedcdt;
+	tedcdt[0]=15000;
+	tedcdt[1]=30000;
+	for(int i=0;i<tedcdt.GetLength();i++)
+	printf("%d\t",tedcdt[i]);
+	printf("\n");
+	return 0;
+}
+

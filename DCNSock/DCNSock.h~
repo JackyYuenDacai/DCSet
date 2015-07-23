@@ -1,0 +1,367 @@
+#pragma once
+#include<DCSet/DCNNode.h>
+#include<DCSet/DCDNodeT.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#include<fcntl.h>
+#include<netdb.h>
+
+#define CLIENT_PORT 0xDCDD
+#define MAX_CLIENTS 0xDC
+
+class DCNSock{
+public:
+	bool IsS;
+	bool Isipv4;
+	bool IsError;
+	bool IsBlocking;
+	int ServerSock;
+	int flags;
+	int LRecvCount;
+	int MaxSock;
+	char*RecvBuf;
+	long ClientsCount;
+	short Port;
+	(void)(*AcceptSignalFun)(int); 
+	fd_set ClientCheck;
+	fd_set ServerCheck;
+	timeval CheckTimeout;
+	DCNStr Addr,LRecv;
+	struct Client{
+		short id;
+		int sock_fd;
+		sockaddr addr;
+		socklen_t addrlen;
+		struct{
+			DCNStr ErrorStr;
+			int ErrorNo;
+			
+		}ErrorInfo;
+		bool IsError;
+	};
+	struct {
+		char*Buf;
+		long Length;
+	}LastRecv;
+	DCDNodeT<Client> Clients;
+	sockaddr_in ServAddr;
+	struct{
+		DCNStr ErrorStr;
+		int ErrorNo;
+	}ErrorInfo;
+
+	DCNSock(){
+		Alloc();
+	}
+	DCNSock(bool IsS){
+		this->IsS=IsS;
+		this->Isipv4=true;
+		Alloc();
+	}
+	bool SetAddress(char*Addr){
+		char**ptr;
+		char   str[32];
+		struct hostent *hptr;
+		if((inet_pton(AF_INET,Addr,&ServAddr.sin_addr))>0){
+			this->Addr=Addr;
+			return true;
+		}
+		else{
+			 if((hptr = gethostbyname(Addr)) == NULL){
+				GetErrorInfo(0);
+        			return false;
+        		}
+        		this->Addr=(char*)inet_ntop(hptr->h_addrtype, hptr->h_addr, str, sizeof(str));
+        		return true;
+		}
+		return false;
+	}
+	void SetIsServer(bool IsS){
+		this->IsS=IsS;
+	}
+	void SetPort(short pn){
+		this->Port=pn;
+	}
+	void SetAcceptSignal((void*)(int) FunPointer){
+		if(FunPointer!=0)
+		AcceptSignalFun=FunPointer;
+	}
+	bool SetNonBlock(){
+		flags=fcntl(ServerSock,F_GETFL,0);
+		if(flags<0){
+			GetErrorInfo(1);
+    			return false;      
+		}
+		fcntl(ServerSock,F_SETFL,flags|O_NONBLOCK);
+		return true;
+	}
+	void ClientSetFd(){
+		FD_ZERO(&ClientCheck);
+		FD_SET(ServerSock,&ClientCheck);
+		
+	}
+	void ServerSetFd(){
+		FD_ZERO(&ServerCheck);
+		FD_SET(ServerSock,&ServerCheck);
+		for(int i=0;i<Clients.GetLength();i++){
+			FD_SET(Clients[i].sock_fd,&ServerCheck);
+		}
+	}
+	DCDNodeT<Client>& GetClients(){
+		return Clients;
+	}
+	char* Recv(long Len,short id=0){
+		free(RecvBuf);
+		RecvBuf=(char*)malloc(sizeof(char)*Len);
+		int ret;
+		if(this->IsS==false){
+			
+			if((ret=recv(ServerSock,RecvBuf,Len,0))<0){
+				GetErrorInfo();
+				return NULL;
+			}
+			else{
+				LastRecv.Length=ret;
+				LastRecv.Buf=RecvBuf;
+				return RecvBuf;
+			}
+		}
+		else{
+			
+			if((ret=recv(Clients[id].sock_fd,RecvBuf,Len,0))<0){
+				GetErrorInfo(true,id);
+				return NULL;
+			}
+			else{
+				LastRecv.Length=ret;
+				LastRecv.Buf=RecvBuf;
+				return RecvBuf;
+			}
+		}
+	}
+	bool Send(const char*data,long len=0,Client* Dest=NULL,short id=0){
+		if(len==0)len=strlen(data)+1;
+		if(IsS==false){
+			if((send(ServerSock,(const char*)data,len,0))<0){
+				GetErrorInfo();
+				return false;
+			}
+			else{
+				return true;
+			}
+		}
+		else{
+			if(Dest==NULL){
+				Dest=&Clients[id];
+			}
+			if((send(Dest->sock_fd,(const char*)data,len,0))<0){
+				GetErrorInfo(true,id);
+				return false;
+			}
+			else{
+				return true;
+			}
+		}
+	}
+	void CloseClient(short id){
+		close(Clients[id].sock_fd);
+		Clients.DelNode(id);
+		ClientsCount--;
+	}
+	void CloseClients(){
+		for(int i=0;i<Clients.GetLength();i++)
+			close(Clients[i].sock_fd);
+	}
+	void CloseServer(){
+		close(ServerSock);
+	}
+   	DCNode<int>& 
+   	ServerCheckRead(){
+   		ServerSetFd();
+   		static DCNode<int> AbleList;
+		int ret=select(MaxSock+1,&ServerCheck,NULL,NULL,&CheckTimeout);
+		
+		if(ret<0){
+			GetErrorInfo();
+			AbleList.DelAll();
+			AbleList[0]=-1;
+			return AbleList;
+		}
+		else if(ret==0){
+			AbleList.DelAll();
+			AbleList[0]=0;
+			return AbleList;
+		}
+		
+		AbleList.DelAll();
+		for(int i=0;i<Clients.GetLength();i++){
+			if(FD_ISSET(Clients[i].sock_fd,&ServerCheck))
+			AbleList+=i;
+		}
+		return AbleList;
+	}
+	bool ServerCheckRead(int id){
+		FD_ZERO(&ServerCheck);
+		FD_SET(ServerSock,&ServerCheck);
+		FD_SET(Clients[id].sock_fd,&ServerCheck);
+		int ret=select((ServerSock>Clients[id].sock_fd?ServerSock:Clients[id].sock_fd)+1,&ServerCheck,NULL,NULL,&CheckTimeout);
+		if(ret<0){
+			GetErrorInfo();
+			return false;
+		}
+		else if(ret==0){
+			return false;
+		}
+		if(FD_ISSET(Clients[id].sock_fd,&ServerCheck))
+			return true;
+		return false;
+	}
+	
+   	bool ServerCheckAccept(bool TickSignal=false){
+   		FD_ZERO(&ServerCheck);
+		FD_SET(ServerSock,&ServerCheck);
+		int ret=select(ServerSock+1,&ServerCheck,NULL,NULL,&CheckTimeout);
+		if(ret<0){
+			GetErrorInfo();
+			return false;
+		}
+		else if(ret==0){
+			return false;
+		}
+   		if(FD_ISSET(ServerSock,&ServerCheck)){
+   			TickSignal==true?AcceptSignalFun(ClientsCount):0;
+   			return true;
+   		}
+   		return false;
+   	}
+
+
+   	bool ServerAccept(){
+   		int i=ClientsCount;
+   		Clients[i].sock_fd=accept(ServerSock,(struct sockaddr*)(&(Clients[i].addr)),(&(Clients[i].addrlen)));
+   		if(Clients[i].sock_fd<=0){
+   			GetErrorInfo();
+   			return false;
+   		}
+   		if(Clients[i].sock_fd>=MaxSock)
+   			MaxSock=Clients[i].sock_fd;
+   		Clients[i].IsError=false;
+   		ClientsCount++;
+   		return true;
+   	}
+	
+	int ClientCheckRead(){
+		ClientSetFd();
+		int ret=select(ServerSock+1,&ClientCheck,NULL,NULL,&CheckTimeout);
+		if(ret==-1){
+			GetErrorInfo();
+			return -1;
+		}
+		else if(ret==0){
+			return ret;
+		}
+		if(FD_ISSET(ServerSock,&ClientCheck)){
+			return 1;
+		}
+		return 2;
+	}
+	int ClientCheckWrite(){
+		ClientSetFd();
+		int ret=select(ServerSock+1,NULL,&ClientCheck,NULL,&CheckTimeout);
+		if(ret==-1){
+			GetErrorInfo();
+			return -1;
+		}
+		else if(ret==0){
+			return ret;
+		}
+		if(FD_ISSET(ServerSock,&ClientCheck)){
+			return 1;
+		}
+		return 2;
+	}
+	void SetTimeout(long Sec,long USec=0){
+		CheckTimeout.tv_sec=Sec;
+		CheckTimeout.tv_usec=USec;
+	}
+	bool ServerInit(){
+		if((ServerSock=socket(AF_INET,SOCK_STREAM,0))==-1){
+			GetErrorInfo();
+			return false;		
+		}
+		ServAddr.sin_family=AF_INET;
+		ServAddr.sin_port=htons(Port);
+		ServAddr.sin_addr.s_addr=htonl(INADDR_ANY);
+		return true;
+	}
+	bool ServerBind(){
+		if(bind(ServerSock,(struct sockaddr*)&ServAddr,sizeof(ServAddr))==-1){  
+			GetErrorInfo();	
+			return false;		
+		}
+		return true;
+	}
+	bool ServerListen(int num=0){
+		if(num==0)num=MAX_CLIENTS;
+		if((listen(ServerSock,num))==-1){
+			GetErrorInfo(2);
+			return false;
+		}
+		return true;
+	}
+	bool ClientInit(){
+		if((ServerSock=socket(AF_INET,SOCK_STREAM,0))<0){
+			GetErrorInfo();
+			return false;		
+		}
+		ServAddr.sin_family=AF_INET;
+		ServAddr.sin_port=htons(Port);
+		if((inet_pton(AF_INET,(char*)Addr,&ServAddr.sin_addr))<=0){
+			GetErrorInfo();	
+			return false;
+		}
+		return true;
+	}
+	bool ClientConn(){
+		if((connect(ServerSock,(struct sockaddr*)&ServAddr,sizeof(struct sockaddr)))!=0){ 
+			GetErrorInfo();	
+			return false;
+		} 
+		MaxSock=ServerSock;
+		return true;
+	}
+	void Alloc(){
+		Port=CLIENT_PORT;
+		IsError=false;
+		//Addr.Settle();	
+		ClientsCount=0;
+		//ErrorInfo.ErrorStr.Settle();
+		memset(&ServAddr,0,sizeof(ServAddr));
+		CheckTimeout.tv_sec=0;
+		CheckTimeout.tv_usec=0;
+		LRecvCount=0;
+		RecvBuf=(char*)malloc(sizeof(char)*0xd);
+		MaxSock=0;
+	}
+	void GetErrorInfo(bool Client=false,int id=0){
+		if(Client==false){
+			ErrorInfo.ErrorStr=strerror(errno);	
+			ErrorInfo.ErrorNo=errno;
+			IsError=true;
+		}
+		else{
+			Clients[id].ErrorInfo.ErrorStr=strerror(errno);
+			ErrorInfo.ErrorNo=errno;
+			Clients[id].IsError=true;
+			ErrorInfo.ErrorStr=Clients[id].ErrorInfo.ErrorStr;
+			ErrorInfo.ErrorNo=errno;
+		}
+	}
+	~DCNSock(){
+		IsS==true?CloseClients():CloseServer();
+	}
+};
